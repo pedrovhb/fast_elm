@@ -30,6 +30,7 @@ ipython = "^8.5.0"
 jupyterlab = "^3.4.6"
 Nuitka = "^1.0.6"
 ordered-set = "^4.1.0"
+ELM327-emulator = "^3.0.0"
 
 
 [tool.mypy]

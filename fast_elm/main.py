@@ -1,9 +1,10 @@
 import atexit
 import time
+from array import array
 from datetime import datetime
 from functools import partial, partialmethod
 from pathlib import Path
-from typing import NoReturn, AsyncIterator
+from typing import NoReturn, AsyncIterator, NamedTuple, ClassVar, Final
 
 import zstandard
 from serial import Serial
@@ -117,6 +118,34 @@ class ElmProtocol(asyncio.Protocol):
 app = typer.Typer()
 
 
+_MAX_BUF_SIZE = 10000
+
+class ObdData:
+
+    __slots__ = ("timestamps", "messages", "_timestamps_file", "_obd_file")
+    def __init__(self):
+        self.timestamps: array[int] = array("I")
+        self.messages: array[int] = array("B")
+        filename = datetime.now().strftime("elm_%Y-%m-%d__%H-%M-%S")
+        self._timestamps_file = zstandard.open(filename + ".obd.zst")
+        self._obd_file = zstandard.open(filename + ".timestamps.zst")
+        atexit.register(self.dump)
+
+
+    def add_data(self, timestamp: float, message: bytes) -> None:
+        self.timestamps.append(int(timestamp * 1000))
+        self.messages.extend(message + b":")
+
+        if len(self.messages) > _MAX_BUF_SIZE:
+            self.dump()
+
+    def dump(self) -> None:
+
+
+
+
+
+
 @app.command("fast-elm")
 @run_sync
 @utils.my_main
@@ -201,6 +230,7 @@ async def main(
     t = asyncio.create_task(asyncio.to_thread(message_buf_watcher))
     t0 = time.perf_counter_ns()
     max_time: float = 0
+
     async for messages, timestamps in protocol.aiter_messages_timestamps():
         # timestamp, message_bytes = message
         print(f"Received {len(messages)} messages, {len(timestamps)} timestamps")

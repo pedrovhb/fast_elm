@@ -1,4 +1,5 @@
 import atexit
+import os
 import time
 from datetime import datetime
 from functools import partial, partialmethod
@@ -115,6 +116,28 @@ class ElmProtocol(asyncio.Protocol):
 
 
 app = typer.Typer()
+
+
+async def reader(read):
+    pipe = os.fdopen(read, mode="r")
+
+    loop = asyncio.get_event_loop()
+    stream_reader = asyncio.StreamReader()
+
+    def protocol_factory():
+        return asyncio.StreamReaderProtocol(stream_reader)
+
+    transport, _ = await loop.connect_read_pipe(protocol_factory, pipe)
+    print(await stream_reader.readline())
+    transport.close()
+
+
+def writer(write):
+    os.write(write, b"Hello World\n")
+
+
+if __name__ == "__main__":
+    main()
 
 
 @app.command("fast-elm")

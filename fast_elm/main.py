@@ -136,10 +136,6 @@ def writer(write):
     os.write(write, b"Hello World\n")
 
 
-if __name__ == "__main__":
-    main()
-
-
 @app.command("fast-elm")
 @run_sync
 @utils.my_main

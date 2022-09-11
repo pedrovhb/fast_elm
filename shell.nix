@@ -6,5 +6,9 @@ let
     editablePackageSources = {
       fast_elm = ./fast_elm;
     };
+    
   };
-in myAppEnv.env
+# in myAppEnv.env
+in myAppEnv.env.overrideAttrs (oldAttrs: {
+  buildInputs = [ pkgs.python310Packages.mypy ];
+})

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import atexit
+import io
 import multiprocessing
 import os
 import time
@@ -22,9 +23,23 @@ from serial.tools.list_ports import comports
 
 
 class ElmProtocol:
-    def __init__(self, write_pipe: int, read_pipe: int):
-        self.elm_read = os.fdopen(read_pipe, "rb", buffering=READ_PIPE_BUFFER_SIZE)
-        self.elm_write = os.fdopen(write_pipe, "wb", buffering=WRITE_PIPE_BUFFER_SIZE)
+    def __init__(self, device: str, baudrate: int = 38400) -> None:
+
+        self.elm_read, self.elm_write = os.pipe()
+        self.main_read, self.main_write = os.pipe()
+
+        os.set_inheritable(self.elm_read, True)
+        os.set_inheritable(self.main_read, True)
+        elm_reader_process = multiprocessing.Process(
+            target=elm_reader,
+            kwargs=dict(
+                write_pipe=self.elm_write,
+                read_pipe=self.main_read,
+                port=device,
+                baudrate=baudrate,
+            ),
+        )
+        elm_reader_process.start()
 
         self.at_prompt = asyncio.Event()
         self.has_message = asyncio.Event()
@@ -37,7 +52,10 @@ class ElmProtocol:
         def protocol_factory():
             return asyncio.StreamReaderProtocol(stream_reader)
 
-        transport, _ = await loop.connect_read_pipe(protocol_factory, self.elm_read)
+        transport, _ = await loop.connect_read_pipe(
+            protocol_factory=protocol_factory,
+            pipe=os.fdopen(self.elm_read, "rb"),
+        )
 
         async for raw_line in stream_reader:
             line = cast(bytes, raw_line)  # type: ignore
@@ -60,6 +78,36 @@ class ElmProtocol:
             #     yield "rpm", int(raw_line[4:8], 16) // 4
             # elif raw_line.startswith(b"410D"):
             #     yield "speed", int(raw_line[4:6], 16)
+
+
+class DataRecorder:
+    def __init__(self, buffer_size: int = 1000) -> None:
+        self._buffer: list[ObdResponseBase[Any]] = []
+        self.buffer_size = buffer_size
+        self._fd = zstandard.open("data.obd", "wb")
+        atexit.register(self.flush)
+
+    def add_to_buffer(self, message: ObdResponseBase[Any]):
+        self._buffer.append(message)
+        if len(self._buffer) > self.buffer_size:
+            self.flush()
+
+    def flush(self):
+        if not self._buffer:
+            return
+        self._fd.write(b"".join(m.bin for m in self._buffer))
+        self._fd.flush()
+        self._buffer = []
+
+    @classmethod
+    def iter_messages(cls) -> AsyncIterator[ObdResponseBase[Any]]:
+        print("Reading messages")
+        with zstandard.open("data.obd", "rb") as fd:
+            while True:
+                packet = fd.read(4 + 16)
+                if not packet:
+                    break
+                yield ObdResponseBase.from_bin(packet)
 
 
 app = typer.Typer()
@@ -96,43 +144,11 @@ async def main(
 
     current_status.value = "Connecting to ELM327"
 
-    elm_read, elm_write = os.pipe()
-    main_read, main_write = os.pipe()
-
-    os.set_inheritable(elm_read, True)
-    os.set_inheritable(main_read, True)
-    elm_reader_process = multiprocessing.Process(
-        target=elm_reader,
-        kwargs=dict(
-            write_pipe=elm_write,
-            read_pipe=main_read,
-            port=device,
-            baudrate=baudrate,
-        ),
-    )
-    elm_reader_process.start()
-    prot = ElmProtocol(main_write, elm_read)
+    prot = ElmProtocol(device=device, baudrate=baudrate)
 
     current_status.value = "Waiting for ELM327 to be ready"
-
-    dt_fmt = "%Y-%m-%d_%H:%M:%S.%f"
-    _write_fd = zstandard.open(f"obd_data_{datetime.now().strftime(dt_fmt)}.zst", "wb")
-    _write_buf = []
-
-    def _dump_write_buf():
-        _write_fd.write(b":".join(_write_buf))
-        _write_buf.clear()
-
-    def _dump_write_buf_and_close():
-        _dump_write_buf()
-        _write_fd.close()
-
-    atexit.register(_dump_write_buf_and_close)
-
     c = 0
-
     latest: dict[type, Any] = {}
-
     messages_per_second = StatusItem("Messages per second", 0)
 
     async def log_messages_per_second():
@@ -144,19 +160,20 @@ async def main(
 
     asyncio.create_task(log_messages_per_second())
 
+    data_recorder = DataRecorder()
     current_status.value = "Gathering data in main loop"
     async for line in prot:
+        data_recorder.add_to_buffer(line)
         if (t := type(line)) not in latest:
             latest[t] = StatusItem(t.__name__, line)
         latest[type(line)].value = line
         c += 1
-        _write_buf.extend((str(line.timestamp).encode("utf-8"), line.data))
-        if len(_write_buf) > 1000:
-            _dump_write_buf()
 
         # pass
         # With ELM327-emulator: `Messages per second: 3056 (0.327 ms/message)`
 
 
 if __name__ == "__main__":
-    app()
+    # app()
+    for msg in DataRecorder.iter_messages():
+        print(msg)

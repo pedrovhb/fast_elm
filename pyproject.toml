@@ -48,6 +48,7 @@ ordered-set = "^4.1.0"
 # init_typed = true
 # warn_required_dynamic_aliases = true
 # warn_untyped_fields = true
+mypy = "^0.971"
 
 [tool.poetry.scripts]
 fast_elm = "fast_elm.main:app"

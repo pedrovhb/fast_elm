@@ -59,9 +59,9 @@ class StatusItemBase(RichCast, Generic[T], ABC):
         super().__init_subclass__(**kwargs)
         # todo maybe move logic to __init__
 
-    def __init__(self) -> None:
-        if not self._updater_running:
-            asyncio.create_task(self.update_status_loop())
+    # def __init__(self) -> None:
+    #     if not self._updater_running:
+    #         asyncio.create_task(self.update_status_loop())
 
     def __rich__(self) -> ConsoleRenderable | RichCast | str:
         raise NotImplementedError
@@ -80,7 +80,7 @@ class StatusItemBase(RichCast, Generic[T], ABC):
         """Update the status panel."""
         try:
             if StatusItemBase._updater_running:
-                logger.error("Status updater already running - there should only be one. Exiting.")
+                # logger.error("Status updater already running - there should only be one. Exiting.")
                 return
             StatusItemBase._updater_running = True
             while True:
@@ -124,6 +124,32 @@ class StatusItem(StatusItemBase[T]):
             f"[bold {self.name_color}]{self.name}[/]"
             f"[bold white]:[/] [{self.value_color}]{self.value}[/]"
         )
+
+    def update_on_fun_entry(
+        self, fun: Callable[P, _U], message: str | None = None
+    ) -> Callable[P, _U]:
+        """Update the status item when the function is entered."""
+
+        @functools.wraps(fun)
+        def decorated(*args: P.args, **kwargs: P.kwargs) -> _U:
+            self.value = f"Entering {fun.__name__}" if message is None else message
+            return fun(*args, **kwargs)
+
+        return decorated
+
+    def update_on_fun_exit(
+        self, fun: Callable[P, _U], message: str | None = None
+    ) -> Callable[P, _U]:
+        """Update the status item when the function exits."""
+
+        @functools.wraps(fun)
+        def decorated(*args: P.args, **kwargs: P.kwargs) -> _U:
+            try:
+                return fun(*args, **kwargs)
+            finally:
+                self.value = f"Exiting {fun.__name__}" if message is None else message
+
+        return decorated
 
 
 class PanStatusItem(StatusItem[str]):

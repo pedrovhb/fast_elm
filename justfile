@@ -1,5 +1,8 @@
 
 
+run:
+  poetry run python fast_elm/main.py
+
 fmt:
   poetry run black .
   poetry run isort . --profile=black

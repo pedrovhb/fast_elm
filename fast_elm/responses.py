@@ -200,13 +200,3 @@ RESPONSE_PREFIXES = {
     b"410D": ResponseVehicleSpeed,
     b"": ObdResponse,
 }
-
-r = None
-t = time.perf_counter_ns()
-for _ in range(1000000):
-    ResponseCoolantTemperature(b"4105 00", 0)
-    ResponseEngineRPM(b"410C 0000", 0)
-    r = ResponseVehicleSpeed(b"410D 00", 0)
-    ObdResponse(b"4105 00", 0)
-print(time.perf_counter_ns() - t)
-print(r)

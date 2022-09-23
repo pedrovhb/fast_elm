@@ -81,7 +81,7 @@ async def main(
             logger.info(f"Using {device}")
         else:
             device = ports[0].device
-            logger.info("No USB serial ports found. Using first port found: {device}")
+            logger.info(f"No USB serial ports found. Using first port found: {device}")
     else:
         logger.info(f"Using {device}")
 

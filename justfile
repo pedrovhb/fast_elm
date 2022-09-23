@@ -1,7 +1,7 @@
 
 
 run:
-  poetry run python fast_elm/main.py
+  poetry run python fast_elm/main.py run
 
 fmt:
   poetry run black .
